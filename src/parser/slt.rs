@@ -42,11 +42,11 @@ impl<'prog> SymbolLookupTable<'prog> {
         self.funcs.insert(func.id, (func, span))
     }
 
-    pub fn get_variable(&self, name: &str) -> Option<&Variable> {
+    pub fn get_variable(&self, name: &str) -> Option<&Variable<'_>> {
         self.variables.get(name).map(|(var, _)| var)
     }
 
-    pub fn get_function(&self, name: &str) -> Option<&Fn> {
+    pub fn get_function(&self, name: &str) -> Option<&Fn<'_>> {
         self.funcs.get(name).map(|(func, _)| func)
     }
 }
