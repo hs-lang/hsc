@@ -32,8 +32,11 @@ pub const KEYWORDS: &[(&str, super::token::TokenKind)] = &[
     ("Starfield", T![Variadic]),
     ("Hypersignal", T![OExtrnFn]),
     ("Jamsignal", T![CExtrnFn]),
-    ("Cargo", T![OFnParams]),
-    ("UnloadCargo", T![CFnParams]),
+    ("Manifest", T![OFnParams]),
+    ("CloseManifest", T![CFnParams]),
+    ("UnloadCargo", T![OFnCallReturn]),
+    ("CargoDock", T![OFnReturn]),
+    ("CloseCargo", T![CFnReturn]),
 ];
 
 pub const TYPES: &[(&str, super::token::TokenKind)] = &[

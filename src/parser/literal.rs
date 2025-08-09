@@ -47,7 +47,7 @@ where
             T![True] => Some(Lit::Bool(true)),
             T![False] => Some(Lit::Bool(false)),
             kind => {
-                error!("unknown start of expression: `{kind}`");
+                error!("unknown start of literal: `{kind}`");
                 self.err_cpt += 1;
                 None
             }

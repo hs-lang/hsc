@@ -34,6 +34,9 @@ macro_rules! T {
     [CFnDecl] => { $crate::lexer::token::TokenKind::CFnDecl };
     [OFnParams] => { $crate::lexer::token::TokenKind::OFnParams };
     [CFnParams] => { $crate::lexer::token::TokenKind::CFnParams };
+    [OFnCallReturn] => { $crate::lexer::token::TokenKind::OFnCallReturn };
+    [OFnReturn] => { $crate::lexer::token::TokenKind::OFnReturn };
+    [CFnReturn] => { $crate::lexer::token::TokenKind::CFnReturn };
     [OFnCall] => { $crate::lexer::token::TokenKind::OFnCall };
     [CFnCall] => { $crate::lexer::token::TokenKind::CFnCall };
     [Variadic] => { $crate::lexer::token::TokenKind::Variadic };
@@ -115,6 +118,9 @@ pub enum TokenKind {
     CFnDecl,
     OFnParams,
     CFnParams,
+    OFnCallReturn,
+    OFnReturn,
+    CFnReturn,
     OFnCall,
     CFnCall,
     Variadic,
@@ -159,7 +165,10 @@ impl fmt::Display for TokenKind {
                 T![OFnCall] => "Opening function call",
                 T![CFnCall] => "Closing function call",
                 T![OFnParams] => "Opening function parameters",
-                T![CFnParams] => "Closing function params",
+                T![CFnParams] => "Closing function parameters",
+                T![OFnReturn] => "Opening function return",
+                T![OFnCallReturn] => "Opening function call return",
+                T![CFnReturn] => "Closing function return",
                 T![Variadic] => "Variadic declaration",
                 T![OExtrnFn] => "Open extrn function declaration",
                 T![CExtrnFn] => "Clone extrn function declaration",

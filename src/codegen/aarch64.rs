@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::codegen;
-use crate::ir::{Arg, Expr, Fn, Lit};
+use crate::ir::{Arg, Expr, Fn, Lit, Type};
 
 pub struct Codegen<'prog, W> {
     // Inputs
@@ -162,10 +162,10 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             }
 
             for i in 0..stack_args {
-                let var_offset = allocated_args_space + 2 + i;
+                let var_offset = allocated_args_space + (2 + i) * 8;
                 arg_index += 1;
 
-                gen_write!(self.writer, "    ldr x8, [x29, -{var_offset:#02x}]\n")?;
+                gen_write!(self.writer, "    ldr x8, [x29, {var_offset:#02x}]\n")?;
                 gen_write!(self.writer, "    str x8, [x29, -{:#02x}]\n", arg_index * 8)?;
             }
 
@@ -184,6 +184,30 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             )?;
             gen_write!(self.writer, "    add sp, sp, {allocated_stack_size:#02x}\n")?;
             gen_write!(self.writer, "\n")?;
+        }
+
+        if !func.returns.is_empty() {
+            let reg_args = func.variadic.unwrap_or(if func.args.len() > 7 {
+                7
+            } else {
+                func.args.len()
+            });
+            let stack_args = func.args.len() - reg_args;
+
+            gen_write!(
+                self.writer,
+                "    // generate return values for {}\n",
+                func.id
+            )?;
+
+            let offset = allocated_stack_size + (2 + stack_args) * 8;
+            for (i, arg) in func.returns.iter().enumerate() {
+                self.generate_arg(arg, slt)?;
+
+                gen_write!(self.writer, "    str x8, [x29, {:#02x}]\n", offset + i * 8)?;
+            }
+
+            self.write_newline()?;
         }
 
         gen_write!(
@@ -205,7 +229,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
         match stmt {
             Let { id, value } => self.generate_let(id, value, slt),
-            FnCall { id, args } => self.generate_fn_call(id, args, slt),
+            FnCall { id, args, returns } => self.generate_fn_call(id, args, returns, slt),
         }
     }
 
@@ -213,6 +237,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         &mut self,
         id: &'prog str,
         args: &'prog [Arg],
+        returns: &'prog [(&'prog str, Type)],
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         let variadic = self.c.program.get_fn_variadic(id);
@@ -223,6 +248,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         let stack_args = args.len() - reg_args;
 
         let allocated_space = crate::math::align_bytes(stack_args * 8, 16);
+        let allocated_space_returns = crate::math::align_bytes(returns.len() * 8, 16);
 
         gen_write!(self.writer, "    // calling {id} function\n")?;
 
@@ -242,6 +268,18 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 gen_write!(self.writer, "    mov x{i}, x8\n")?;
                 gen_write!(self.writer, "\n")?;
             }
+        }
+
+        if !returns.is_empty() {
+            gen_write!(
+                self.writer,
+                "    // allocate needed stack space for the function returns\n"
+            )?;
+            gen_write!(
+                self.writer,
+                "    str x8, [sp, -{allocated_space_returns:#02x}]!\n"
+            )?;
+            gen_write!(self.writer, "\n")?;
         }
 
         if stack_args > 0 {
@@ -275,6 +313,32 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 "    // pop from the stack the {id} function arguments\n"
             )?;
             gen_write!(self.writer, "    add sp, sp, {allocated_space:#02x}\n")?;
+            gen_write!(self.writer, "\n")?;
+        }
+
+        if !returns.is_empty() {
+            gen_write!(
+                self.writer,
+                "    // load the returned value onto the correct variables\n"
+            )?;
+            let mut offset = 0;
+
+            for (id, _) in returns {
+                gen_write!(self.writer, "    ldr x8, [sp, {offset:#02x}]\n")?;
+                // SAFETY: this is safe because of the parser (the variable has been pushed to the slt)
+                let var = slt.get_variable(id).unwrap();
+                gen_write!(self.writer, "    str x8, [x29, -{:#02x}]\n", var.offset * 8)?;
+                offset += 9;
+            }
+
+            gen_write!(
+                self.writer,
+                "    // pop from the stack the {id} function returns\n"
+            )?;
+            gen_write!(
+                self.writer,
+                "    add sp, sp, {allocated_space_returns:#02x}\n"
+            )?;
             gen_write!(self.writer, "\n")?;
         }
 

@@ -27,6 +27,7 @@ pub struct Fn<'prog> {
     // the number of fixed parameters
     pub variadic: Option<usize>,
     pub args: Vec<(&'prog str, Type)>,
+    pub returns: Vec<Arg<'prog>>,
 }
 
 pub enum Op {
@@ -60,14 +61,17 @@ pub enum Expr<'prog> {
     FnCall {
         id: &'prog str,
         args: Vec<Arg<'prog>>,
+        returns: Vec<(&'prog str, Type)>,
     },
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Arg<'prog> {
     Id(&'prog str),
     Lit(Lit<'prog>),
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Lit<'prog> {
     Int(i64),
     Str(&'prog str),

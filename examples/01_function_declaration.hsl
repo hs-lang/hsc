@@ -10,6 +10,8 @@ May the force be with you.
 
 A long time ago in a hello_world far, far away...
     Execute order printf
-      "Hello World!\n"
+        Manifest
+            "Hello World!\n"
+        CloseManifest
     Order executed
 May the force be with you.

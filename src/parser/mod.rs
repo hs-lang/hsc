@@ -242,8 +242,19 @@ where
         };
 
         let mut body = Vec::new();
-        while !self.check_next(T![CFnDecl]) {
+        while !self.check_next(T![CFnDecl]) && !self.check_next(T![OFnReturn]) {
             body.push(self.expression(slt_builder, child_mut)?);
+        }
+
+        let mut returns = Vec::new();
+        if self.check_next(T![OFnReturn]) {
+            self.consume(T![OFnReturn])?;
+
+            while !self.check_next(T![CFnReturn]) {
+                returns.push(self.arg()?);
+            }
+
+            self.consume(T![CFnReturn])?;
         }
 
         self.consume(T![CFnDecl])?;
@@ -253,6 +264,7 @@ where
             body,
             variadic,
             args,
+            returns,
         };
 
         slt.add_function(&func, self.span);

@@ -52,7 +52,7 @@ where
                         slt.add_variable((id, Type::Val(InnerType::Bool), b), ident.span)
                     }
                     _ => {
-                        error!("invalid expression found");
+                        error!("invalid argument found");
                         self.err_cpt += 1;
                         return None;
                     }
@@ -87,12 +87,58 @@ where
                 let id = self.arena.strdup(self.text(ident));
 
                 let mut args = Vec::new();
-                while !self.check_next(T![CFnCall]) {
-                    args.push(self.arg()?);
+                if self.check_next(T![OFnParams]) {
+                    self.consume(T![OFnParams])?;
+
+                    while !self.check_next(T![CFnParams]) {
+                        args.push(self.arg()?);
+                    }
+
+                    self.consume(T![CFnParams])?;
                 }
 
+                let mut returns = Vec::new();
+                if self.check_next(T![OFnCallReturn]) {
+                    self.consume(T![OFnCallReturn])?;
+
+                    while !self.check_next(T![CFnReturn]) {
+                        let Some(kind) = self.peek() else {
+                            error!("expected type token in function call returns");
+                            self.err_cpt += 1;
+                            return None;
+                        };
+
+                        let ty = match kind {
+                            T![TyInt] => Type::Val(InnerType::Int),
+                            T![TyString] => Type::Val(InnerType::Str),
+                            T![TyBool] => Type::Val(InnerType::Bool),
+                            _ => {
+                                error!("unexpected token for type");
+                                self.err_cpt += 1;
+                                return None;
+                            }
+                        };
+                        self.consume(kind)?;
+                        let value = self.arg()?;
+
+                        if let Arg::Id(id) = value {
+                            if let Some(var) = slt.get_variable(id) {
+                                returns.push((id, var.ty));
+                            } else {
+                                slt.add_variable((id, ty), self.span);
+                            }
+                        } else {
+                            error!("invalid argument found");
+                            self.err_cpt += 1;
+                            return None;
+                        }
+                    }
+
+                    self.consume(T![CFnReturn])?;
+                }
                 self.consume(T![CFnCall])?;
-                Some(Expr::FnCall { id, args })
+
+                Some(Expr::FnCall { id, args, returns })
             }
             //T![OAssign] => {
             //    self.consume(T![OAssign])?;
@@ -152,7 +198,7 @@ where
             //    }
             //}
             kind => {
-                error!("unknown start of statement: `{kind}`");
+                error!("unknown start of expression: `{kind}`");
                 self.err_cpt += 1;
                 None
             }

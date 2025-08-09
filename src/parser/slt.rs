@@ -65,6 +65,7 @@ pub struct Fn<'prog> {
     pub id: &'prog str,
     pub ty: crate::ir::Type,
     pub args: Vec<crate::ir::Type>,
+    pub returns: Vec<crate::ir::Arg<'prog>>,
     pub variadic: Option<usize>,
 }
 
@@ -218,6 +219,7 @@ impl<'prog> From<&crate::ir::Fn<'prog>> for Fn<'prog> {
             id: value.id,
             ty: crate::ir::Type::Void,
             args: value.args.iter().map(|a| a.1).collect(),
+            returns: value.returns.clone(),
             variadic: value.variadic,
         }
     }
@@ -229,6 +231,7 @@ impl<'prog> From<&crate::ir::Extrn<'prog>> for Fn<'prog> {
             id: value.id,
             ty: crate::ir::Type::Void,
             args: value.args.clone(),
+            returns: vec![],
             variadic: value.variadic,
         }
     }
