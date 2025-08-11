@@ -1,4 +1,4 @@
-use crate::ir::{Arg, Expr, Fn, InnerType, Lit, Program, Type};
+use crate::ir::{Arg, Expr, Fn, Lit, Program, Type};
 use crate::parser::slt::NavigableSlt;
 
 pub fn validate(program: &Program<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
@@ -81,9 +81,9 @@ fn validate_fn(func: &Fn<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
 
 fn get_arg_ty(expr: &Arg<'_>, slt: &NavigableSlt<'_, '_>) -> Option<Type> {
     match expr {
-        Arg::Lit(Lit::Int(_)) => Some(Type::Val(InnerType::Int)),
-        Arg::Lit(Lit::Str(_)) => Some(Type::Val(InnerType::Str)),
-        Arg::Lit(Lit::Bool(_)) => Some(Type::Val(InnerType::Bool)),
+        Arg::Lit(Lit::Int(_)) => Some(Type::Int),
+        Arg::Lit(Lit::Str(_)) => Some(Type::Str),
+        Arg::Lit(Lit::Bool(_)) => Some(Type::Bool),
         Arg::Id(id) => slt.find_variable(id).map(|var| var.ty),
     }
 }

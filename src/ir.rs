@@ -41,16 +41,11 @@ pub enum Op {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
-    Ptr(InnerType),
-    Val(InnerType),
-    Void,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InnerType {
+    Ptr(&'static Type),
     Int,
     Str,
     Bool,
+    Void,
 }
 
 pub enum Expr<'prog> {
@@ -117,18 +112,10 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ptr(inner) => write!(f, "pointer({inner})"),
-            Self::Val(inner) => write!(f, "value({inner})"),
-            Self::Void => write!(f, "void"),
-        }
-    }
-}
-
-impl fmt::Display for InnerType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
             Self::Int => write!(f, "Credit"),
             Self::Str => write!(f, "Holotext"),
             Self::Bool => write!(f, "Signal"),
+            Self::Void => write!(f, "void"),
         }
     }
 }

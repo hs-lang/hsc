@@ -1,6 +1,6 @@
 use slt::{Builder, SymbolLookupTable};
 
-use crate::ir::{Extrn, Fn, InnerType, Program, Type};
+use crate::ir::{Extrn, Fn, Program, Type};
 use crate::lexer::token::{Token, TokenKind};
 use crate::lexer::Lexer;
 
@@ -143,9 +143,9 @@ where
             };
 
             let ty = match kind {
-                T![TyInt] => Type::Val(InnerType::Int),
-                T![TyString] => Type::Val(InnerType::Str),
-                T![TyBool] => Type::Val(InnerType::Bool),
+                T![TyInt] => Type::Int,
+                T![TyString] => Type::Str,
+                T![TyBool] => Type::Bool,
                 _ => {
                     error!("unexpected token for type");
                     self.err_cpt += 1;
@@ -205,9 +205,9 @@ where
                 };
 
                 let ty = match kind {
-                    T![TyInt] => Type::Val(InnerType::Int),
-                    T![TyString] => Type::Val(InnerType::Str),
-                    T![TyBool] => Type::Val(InnerType::Bool),
+                    T![TyInt] => Type::Int,
+                    T![TyString] => Type::Str,
+                    T![TyBool] => Type::Bool,
                     _ => {
                         error!("unexpected token for type");
                         self.err_cpt += 1;

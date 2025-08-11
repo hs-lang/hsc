@@ -1,4 +1,4 @@
-use crate::ir::{Arg, Expr, InnerType, Lit, Type};
+use crate::ir::{Arg, Expr, Lit, Type};
 use crate::lexer::token::Token;
 use crate::parser::Parser;
 
@@ -42,15 +42,9 @@ where
                 let value = self.arg()?;
 
                 let res = match value {
-                    Arg::Lit(Lit::Str(s)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Str), s), ident.span)
-                    }
-                    Arg::Lit(Lit::Int(i)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Int), i), ident.span)
-                    }
-                    Arg::Lit(Lit::Bool(b)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Bool), b), ident.span)
-                    }
+                    Arg::Lit(Lit::Str(s)) => slt.add_variable((id, Type::Str, s), ident.span),
+                    Arg::Lit(Lit::Int(i)) => slt.add_variable((id, Type::Int, i), ident.span),
+                    Arg::Lit(Lit::Bool(b)) => slt.add_variable((id, Type::Bool, b), ident.span),
                     _ => {
                         error!("invalid argument found");
                         self.err_cpt += 1;
@@ -109,9 +103,9 @@ where
                         };
 
                         let ty = match kind {
-                            T![TyInt] => Type::Val(InnerType::Int),
-                            T![TyString] => Type::Val(InnerType::Str),
-                            T![TyBool] => Type::Val(InnerType::Bool),
+                            T![TyInt] => Type::Int,
+                            T![TyString] => Type::Str,
+                            T![TyBool] => Type::Bool,
                             _ => {
                                 error!("unexpected token for type");
                                 self.err_cpt += 1;
