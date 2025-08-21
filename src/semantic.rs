@@ -39,17 +39,8 @@ fn validate_fn(func: &Fn<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
                 }
 
                 for i in 0..min_args_number {
-                    let Some(ty) = get_arg_ty(&args[i], slt) else {
-                        error!("unable to find the type of this expression");
-                        err_cpt += 1;
-                        continue;
-                    };
-
-                    if ty != called_func.args[i] {
-                        error!(
-                            "type mismatch for {id} argument number {i} expected `{}` and got `{}`",
-                            called_func.args[i], ty
-                        );
+                    if !check_arg_ty(&args[i], called_func.args[i], slt) {
+                        error!("type mismatch for function {id} argument number {i}");
                         err_cpt += 1;
                     }
                 }
@@ -61,13 +52,8 @@ fn validate_fn(func: &Fn<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
                 }
 
                 for (i, (rid, ty)) in returns.iter().enumerate() {
-                    let Some(expected_ty) = get_arg_ty(&called_func.returns[i], slt) else {
-                        error!("unable to find the type of this return argument");
-                        err_cpt += 1;
-                        continue;
-                    };
-                    if *ty != expected_ty {
-                        error!("type mismatch for return argument {rid} in function {id} expected `{expected_ty}` and got `{ty}`");
+                    if !check_arg_ty(&called_func.returns[i], *ty, slt) {
+                        error!("type mismatch for return argument {rid} in function {id}");
                         err_cpt += 1;
                     }
                 }
@@ -79,11 +65,41 @@ fn validate_fn(func: &Fn<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
     err_cpt
 }
 
-fn get_arg_ty(expr: &Arg<'_>, slt: &NavigableSlt<'_, '_>) -> Option<Type> {
-    match expr {
-        Arg::Lit(Lit::Int(_)) => Some(Type::Int),
-        Arg::Lit(Lit::Str(_)) => Some(Type::Str),
-        Arg::Lit(Lit::Bool(_)) => Some(Type::Bool),
-        Arg::Id(id) => slt.find_variable(id).map(|var| var.ty),
+fn check_arg_ty<'prog>(
+    arg: &Arg<'prog>,
+    check: Type<'prog>,
+    slt: &NavigableSlt<'_, 'prog>,
+) -> bool {
+    match arg {
+        Arg::Lit(Lit::Int(_)) => check == Type::Int,
+        Arg::Lit(Lit::Str(_)) => check == Type::Str,
+        Arg::Lit(Lit::Bool(_)) => check == Type::Bool,
+        Arg::Id(id) => {
+            let Some(var) = slt.find_variable(id) else {
+                return false;
+            };
+
+            var.ty == check
+        }
+        Arg::Deref(id) => {
+            let Some(var) = slt.find_variable(id) else {
+                return false;
+            };
+
+            match var.ty {
+                Type::Ptr(&ty) => ty == check,
+                _ => false,
+            }
+        }
+        Arg::Ref(id) => {
+            let Some(var) = slt.find_variable(id) else {
+                return false;
+            };
+
+            match check {
+                Type::Ptr(&ty) => var.ty == ty,
+                _ => false,
+            }
+        }
     }
 }

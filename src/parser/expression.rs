@@ -13,7 +13,7 @@ where
         _slt_builder: &mut Builder,
         slt: &mut SymbolLookupTable<'prog>,
     ) -> Option<Expr<'prog>> {
-        let Some(kind) = self.peek() else {
+        let Some(kind) = self.peek_kind() else {
             error!("Expected a statement and found nothing");
             self.err_cpt += 1;
             return None;
@@ -96,31 +96,17 @@ where
                     self.consume(T![OFnCallReturn])?;
 
                     while !self.check_next(T![CFnReturn]) {
-                        let Some(kind) = self.peek() else {
-                            error!("expected type token in function call returns");
-                            self.err_cpt += 1;
-                            return None;
-                        };
-
-                        let ty = match kind {
-                            T![TyInt] => Type::Int,
-                            T![TyString] => Type::Str,
-                            T![TyBool] => Type::Bool,
-                            _ => {
-                                error!("unexpected token for type");
-                                self.err_cpt += 1;
-                                return None;
-                            }
-                        };
-                        self.consume(kind)?;
+                        let ty = self.ty()?;
                         let value = self.arg()?;
 
                         if let Arg::Id(id) = value {
-                            if let Some(var) = slt.get_variable(id) {
-                                returns.push((id, var.ty));
+                            let (id, ty) = if let Some(var) = slt.get_variable(id) {
+                                (id, var.ty)
                             } else {
                                 slt.add_variable((id, ty), self.span);
-                            }
+                                (id, ty)
+                            };
+                            returns.push((id, ty));
                         } else {
                             error!("invalid argument found");
                             self.err_cpt += 1;
@@ -134,63 +120,7 @@ where
 
                 Some(Expr::FnCall { id, args, returns })
             }
-            //T![OAssign] => {
-            //    self.consume(T![OAssign])?;
-            //    let Some(ident) = self.next() else {
-            //        error!("expected identifier after `assign` but found nothing");
-            //        self.err_cpt += 1;
-            //        return None;
-            //    };
-
-            //    if ident.kind != T![ID] {
-            //        error!(
-            //            "expected identifier after `assign` but found {} instead",
-            //            ident.kind
-            //        );
-            //        self.err_cpt += 1;
-            //        return None;
-            //    }
-
-            //    let id = self.arena.strdup(self.text(ident));
-
-            //    let mut ops = Vec::new();
-            //    while !self.check_next(T![CAssign]) {
-            //        ops.push(self.unary_op()?);
-            //    }
-
-            //    self.consume(T![CAssign])?;
-            //    Some(Stmt::Assign { id, ops })
-            //}
-            //T![if] => {
-            //    self.consume(T![if]);
-
-            //    let condition = Box::new(self.expression());
-            //    let mut body = Vec::new();
-
-            //    while !self.at(T![else]) && !self.at(T![if_end]) {
-            //        body.push(self.statement());
-            //    }
-
-            //    let else_stmt = if self.at(T![else]) {
-            //        self.consume(T![else]);
-            //        let mut else_body = Vec::new();
-
-            //        while !self.at(T![if_end]) {
-            //            else_body.push(self.statement());
-            //        }
-
-            //        Some(else_body)
-            //    } else {
-            //        None
-            //    };
-
-            //    self.consume(T![if_end]);
-            //    ast::Stmt::IfStmt {
-            //        condition,
-            //        body,
-            //        else_stmt,
-            //    }
-            //}
+            T![OEq] | T![OAdd] | T![OSub] | T![OMul] | T![ODiv] | T![OMod] => self.binop(),
             kind => {
                 error!("unknown start of expression: `{kind}`");
                 self.err_cpt += 1;
@@ -199,41 +129,28 @@ where
         }
     }
 
-    //fn unary_op(&mut self) -> Option<Unop<'prog>> {
-    //    let Some(kind) = self.peek() else {
-    //        error!("expected an unary operator and found nothing");
-    //        self.err_cpt += 1;
-    //        return None;
-    //    };
+    fn binop(&mut self) -> Option<Expr<'prog>> {
+        // SAFETY: this is safe because of the call from `self.expression`
+        let tok = self.next().unwrap();
 
-    //    let unop = match kind {
-    //        T![Plus] => Unop {
-    //            op: crate::ir::Op::Add,
-    //            value: self.expression()?,
-    //        },
-    //        T![Minus] => Unop {
-    //            op: crate::ir::Op::Sub,
-    //            value: self.expression()?,
-    //        },
-    //        T![Div] => Unop {
-    //            op: crate::ir::Op::Div,
-    //            value: self.expression()?,
-    //        },
-    //        T![Mul] => Unop {
-    //            op: crate::ir::Op::Mul,
-    //            value: self.expression()?,
-    //        },
-    //        T![Mod] => Unop {
-    //            op: crate::ir::Op::Mod,
-    //            value: self.expression()?,
-    //        },
-    //        kind => {
-    //            error!("unknown start of unary operator: `{kind}`");
-    //            self.err_cpt += 1;
-    //            return None;
-    //        }
-    //    };
+        use crate::ir::Binop::*;
 
-    //    Some(unop)
-    //}
+        let (binop, closing_tok) = match tok.kind {
+            T![OEq] => (Eq, T![CEq]),
+            T![OAdd] => (Add, T![CAdd]),
+            T![OSub] => (Sub, T![CSub]),
+            T![OMul] => (Mul, T![CMul]),
+            T![ODiv] => (Div, T![CDiv]),
+            T![OMod] => (Mod, T![CMod]),
+            // SAFETY: this is safe because of the call from `self.expression`
+            _ => unreachable!(""),
+        };
+
+        let lhs = self.arg()?;
+        let rhs = self.arg()?;
+
+        self.consume(closing_tok);
+
+        Some(Expr::BinOp { binop, lhs, rhs })
+    }
 }

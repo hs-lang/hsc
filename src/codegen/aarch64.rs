@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::codegen;
-use crate::ir::{Arg, Expr, Fn, Lit, Type};
+use crate::ir::{Arg, Binop, Expr, Fn, Lit, Type};
 
 pub struct Codegen<'prog, W> {
     // Inputs
@@ -230,6 +230,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         match stmt {
             Let { id, value } => self.generate_let(id, value, slt),
             FnCall { id, args, returns } => self.generate_fn_call(id, args, returns, slt),
+            BinOp { binop, lhs, rhs } => self.generate_binop(binop, lhs, rhs, slt),
         }
     }
 
@@ -237,7 +238,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         &mut self,
         id: &'prog str,
         args: &'prog [Arg],
-        returns: &'prog [(&'prog str, Type)],
+        returns: &'prog [(&'prog str, Type<'prog>)],
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         let variadic = self.c.program.get_fn_variadic(id);
@@ -371,12 +372,12 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_arg<'a>(
         &mut self,
-        expr: &'prog Arg,
+        arg: &'prog Arg,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Arg::*;
 
-        match expr {
+        match arg {
             Lit(lit) => self.generate_lit(lit),
             Id(id) => {
                 // SAFETY: this is safe because of the semantic controls
@@ -403,6 +404,120 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
                 gen_write!(self.writer, "\n")
             }
+
+            Deref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} into x8\n", id)?;
+                gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
+                gen_write!(self.writer, "    ldr x8, [x8]\n")?;
+                gen_write!(self.writer, "\n")
+            }
+            Ref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} addr x8\n", id)?;
+                gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?;
+                gen_write!(self.writer, "\n")
+            }
+        }
+    }
+
+    fn generate_arg_addr<'a>(
+        &mut self,
+        arg: &'prog Arg,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        use Arg::*;
+
+        match arg {
+            Id(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} addr x8\n", id)?;
+                gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?;
+                gen_write!(self.writer, "\n")
+            }
+            Deref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} into x8\n", id)?;
+                gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
+                gen_write!(self.writer, "\n")
+            }
+            _ => todo!(),
         }
     }
 
@@ -449,6 +564,29 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         }
 
         self.write_newline()
+    }
+
+    fn generate_binop<'a>(
+        &mut self,
+        binop: &Binop,
+        lhs: &'prog Arg<'prog>,
+        rhs: &'prog Arg<'prog>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        use Binop::*;
+
+        match binop {
+            Eq => {
+                self.generate_arg_addr(lhs, slt)?;
+                gen_write!(self.writer, "    mov x10, x8\n")?;
+                self.generate_arg(rhs, slt)?;
+
+                gen_write!(self.writer, "    str x8, [x10, 0x0]\n")?;
+            }
+            _ => todo!(),
+        }
+
+        Ok(())
     }
 
     fn write_newline(&mut self) -> codegen::error::Result<()> {

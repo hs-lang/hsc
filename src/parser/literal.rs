@@ -8,7 +8,7 @@ where
     I: Iterator<Item = Token>,
 {
     pub fn literal(&mut self) -> Option<Lit<'prog>> {
-        let Some(kind) = self.peek() else {
+        let Some(kind) = self.peek_kind() else {
             error!("expected a literal but got nothing");
             self.err_cpt += 1;
             return None;

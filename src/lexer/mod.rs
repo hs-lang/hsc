@@ -615,10 +615,22 @@ mod tests {
     #[test]
     fn types() {
         let input = r#"
-            Credit Holotext Signal
+            Credit Holotext Signal Target<Holotext>
         "#;
         let mut lexer = Lexer::new(&input);
         let tokens: Vec<_> = lexer.tokenize();
-        assert_tokens!(tokens, [T![TyInt], T![TyString], T![TyBool], T![EOF]]);
+        assert_tokens!(
+            tokens,
+            [
+                T![TyInt],
+                T![TyStr],
+                T![TyBool],
+                T![TyPtr],
+                T![OGen],
+                T![TyStr],
+                T![CGen],
+                T![EOF]
+            ]
+        );
     }
 }

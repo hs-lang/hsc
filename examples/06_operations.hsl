@@ -1,0 +1,27 @@
+Hypersignal printf Starfield 1
+    Holotext
+Jamsignal
+
+A long time ago in a galaxy far, far away...
+    I am a big deal in the resistance. finn
+    Judge me by my size, do you ? -10
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
+
+    Tune finn
+        10
+    CloseTune
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
+May the force be with you.
+

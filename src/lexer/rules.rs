@@ -1,13 +1,21 @@
 pub const PUNCTS: &[(&str, super::token::TokenKind)] = &[
-    ("Never tell me the odds!", T![Mod]),
-    ("Not to worry, we are still flying half a ship.", T![Div]),
-    ("There's too many of them!", T![Mul]),
-    ("Proceed with the countdown.", T![Minus]),
-    (
-        "Your lightsabers will make a fine addition to my collection.",
-        T![Plus],
-    ),
+    ("Tune", T![OEq]),
+    ("CloseTune", T![CEq]),
+    ("Boost", T![OAdd]),
+    ("CloseBoost", T![CAdd]),
+    ("Drain", T![OSub]),
+    ("CloseDrain", T![CSub]),
+    ("Amplify", T![OMul]),
+    ("CloseAmplify", T![CMul]),
+    ("Disperse", T![ODiv]),
+    ("CloseDisperse", T![CDiv]),
+    ("Salvage", T![OMod]),
+    ("CloseSalvage", T![CMod]),
     ("-", T![Not]),
+    ("<", T![OGen]),
+    (">", T![CGen]),
+    ("Beacon", T![Beacon]),
+    ("Retrieve", T![Retrieve]),
 ];
 
 pub const KEYWORDS: &[(&str, super::token::TokenKind)] = &[
@@ -41,6 +49,7 @@ pub const KEYWORDS: &[(&str, super::token::TokenKind)] = &[
 
 pub const TYPES: &[(&str, super::token::TokenKind)] = &[
     ("Credit", T![TyInt]),
-    ("Holotext", T![TyString]),
+    ("Holotext", T![TyStr]),
     ("Signal", T![TyBool]),
+    ("Target", T![TyPtr]),
 ];

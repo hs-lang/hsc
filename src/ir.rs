@@ -1,9 +1,5 @@
 //! Intermediate Representation (IR) of the HSL language
-#![allow(dead_code)]
-
 use core::fmt;
-
-use crate::lexer::token::TokenKind;
 
 pub struct Program<'prog> {
     pub func: Vec<Fn<'prog>>,
@@ -16,7 +12,7 @@ pub struct Extrn<'prog> {
     // Tell if the function has a variadic parameter and if so the value of variadic is
     // the number of fixed parameters
     pub variadic: Option<usize>,
-    pub args: Vec<Type>,
+    pub args: Vec<Type<'prog>>,
 }
 
 pub struct Fn<'prog> {
@@ -26,11 +22,11 @@ pub struct Fn<'prog> {
     // Tell if the function has a variadic parameter and if so the value of variadic is
     // the number of fixed parameters
     pub variadic: Option<usize>,
-    pub args: Vec<(&'prog str, Type)>,
+    pub args: Vec<(&'prog str, Type<'prog>)>,
     pub returns: Vec<Arg<'prog>>,
 }
 
-pub enum Op {
+pub enum Binop {
     Eq,
     Add,
     Sub,
@@ -40,8 +36,8 @@ pub enum Op {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Type {
-    Ptr(&'static Type),
+pub enum Type<'prog> {
+    Ptr(&'prog Type<'prog>),
     Int,
     Str,
     Bool,
@@ -56,12 +52,19 @@ pub enum Expr<'prog> {
     FnCall {
         id: &'prog str,
         args: Vec<Arg<'prog>>,
-        returns: Vec<(&'prog str, Type)>,
+        returns: Vec<(&'prog str, Type<'prog>)>,
+    },
+    BinOp {
+        binop: Binop,
+        lhs: Arg<'prog>,
+        rhs: Arg<'prog>,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Arg<'prog> {
+    Deref(&'prog str),
+    Ref(&'prog str),
     Id(&'prog str),
     Lit(Lit<'prog>),
 }
@@ -92,23 +95,7 @@ impl<'prog> Program<'prog> {
     }
 }
 
-impl TryFrom<TokenKind> for Op {
-    type Error = ();
-
-    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
-        match value {
-            T![Plus] => Ok(Self::Add),
-            T![Eq] => Ok(Self::Eq),
-            T![Minus] => Ok(Self::Sub),
-            T![Div] => Ok(Self::Div),
-            T![Mul] => Ok(Self::Mul),
-            T![Mod] => Ok(Self::Mod),
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for Type {
+impl<'prog> fmt::Display for Type<'prog> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ptr(inner) => write!(f, "pointer({inner})"),
