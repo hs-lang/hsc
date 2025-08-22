@@ -230,7 +230,8 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         match stmt {
             Let { id, value } => self.generate_let(id, value, slt),
             FnCall { id, args, returns } => self.generate_fn_call(id, args, returns, slt),
-            BinOp { binop, lhs, rhs } => self.generate_binop(binop, lhs, rhs, slt),
+            Binop(crate::ir::Binop::Eq { lhs, rhs }) => self.generate_eq(lhs, rhs, slt),
+            Binop(_) => unreachable!(""),
         }
     }
 
@@ -566,27 +567,50 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         self.write_newline()
     }
 
+    fn generate_eq<'a>(
+        &mut self,
+        lhs: &'prog Arg<'prog>,
+        rhs: &'prog Binop<'prog>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        self.generate_binop(rhs, slt)?;
+        gen_write!(self.writer, "    mov x0, x8\n")?;
+
+        self.generate_arg_addr(lhs, slt)?;
+        gen_write!(self.writer, "    str x0, [x8]\n")?;
+        self.write_newline()
+    }
+
     fn generate_binop<'a>(
         &mut self,
-        binop: &Binop,
-        lhs: &'prog Arg<'prog>,
-        rhs: &'prog Arg<'prog>,
+        binop: &'prog Binop<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Binop::*;
 
         match binop {
-            Eq => {
-                self.generate_arg_addr(lhs, slt)?;
-                gen_write!(self.writer, "    mov x10, x8\n")?;
-                self.generate_arg(rhs, slt)?;
+            Eq { .. } => unreachable!(),
+            Add { lhs, rhs }
+            | Sub { lhs, rhs }
+            | Mul { lhs, rhs }
+            | Div { lhs, rhs }
+            | Mod { lhs, rhs } => {
+                self.generate_binop(lhs, slt)?;
+                gen_write!(self.writer, "    str x8, [sp, -0x10]!\n")?;
+                self.generate_binop(rhs, slt)?;
+                gen_write!(self.writer, "    ldr x9, [sp], 0x10\n")?;
 
-                gen_write!(self.writer, "    str x8, [x10, 0x0]\n")?;
+                match binop {
+                    Add { .. } => gen_write!(self.writer, "    add x8, x8, x9\n"),
+                    Sub { .. } => gen_write!(self.writer, "    sub x8, x8, x9\n"),
+                    Mul { .. } => todo!("mul"),
+                    Div { .. } => todo!("div"),
+                    Mod { .. } => todo!("mod"),
+                    _ => unreachable!(),
+                }
             }
-            _ => todo!(),
+            Arg(arg) => self.generate_arg(arg, slt),
         }
-
-        Ok(())
     }
 
     fn write_newline(&mut self) -> codegen::error::Result<()> {

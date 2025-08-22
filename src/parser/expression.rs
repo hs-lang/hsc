@@ -120,37 +120,22 @@ where
 
                 Some(Expr::FnCall { id, args, returns })
             }
-            T![OEq] | T![OAdd] | T![OSub] | T![OMul] | T![ODiv] | T![OMod] => self.binop(),
+            T![OEq] => {
+                self.consume(T![OEq])?;
+                let lhs = self.arg()?;
+                let rhs = self.binop()?;
+                self.consume(T![CEq])?;
+
+                let rhs = self.arena.objdup(&rhs);
+                let eq = crate::ir::Binop::Eq { lhs, rhs };
+
+                Some(Expr::Binop(eq))
+            }
             kind => {
                 error!("unknown start of expression: `{kind}`");
                 self.err_cpt += 1;
                 None
             }
         }
-    }
-
-    fn binop(&mut self) -> Option<Expr<'prog>> {
-        // SAFETY: this is safe because of the call from `self.expression`
-        let tok = self.next().unwrap();
-
-        use crate::ir::Binop::*;
-
-        let (binop, closing_tok) = match tok.kind {
-            T![OEq] => (Eq, T![CEq]),
-            T![OAdd] => (Add, T![CAdd]),
-            T![OSub] => (Sub, T![CSub]),
-            T![OMul] => (Mul, T![CMul]),
-            T![ODiv] => (Div, T![CDiv]),
-            T![OMod] => (Mod, T![CMod]),
-            // SAFETY: this is safe because of the call from `self.expression`
-            _ => unreachable!(""),
-        };
-
-        let lhs = self.arg()?;
-        let rhs = self.arg()?;
-
-        self.consume(closing_tok);
-
-        Some(Expr::BinOp { binop, lhs, rhs })
     }
 }

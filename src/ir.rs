@@ -26,13 +26,32 @@ pub struct Fn<'prog> {
     pub returns: Vec<Arg<'prog>>,
 }
 
-pub enum Binop {
-    Eq,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
+pub enum Binop<'prog> {
+    Eq {
+        lhs: Arg<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Add {
+        lhs: &'prog Binop<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Sub {
+        lhs: &'prog Binop<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Mul {
+        lhs: &'prog Binop<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Div {
+        lhs: &'prog Binop<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Mod {
+        lhs: &'prog Binop<'prog>,
+        rhs: &'prog Binop<'prog>,
+    },
+    Arg(Arg<'prog>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,11 +73,7 @@ pub enum Expr<'prog> {
         args: Vec<Arg<'prog>>,
         returns: Vec<(&'prog str, Type<'prog>)>,
     },
-    BinOp {
-        binop: Binop,
-        lhs: Arg<'prog>,
-        rhs: Arg<'prog>,
-    },
+    Binop(Binop<'prog>),
 }
 
 #[derive(Debug, Clone, Copy)]

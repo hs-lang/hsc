@@ -5,6 +5,7 @@ use crate::lexer::token::{Token, TokenKind};
 use crate::lexer::Lexer;
 
 mod arg;
+mod binop;
 mod expression;
 mod literal;
 pub mod slt;

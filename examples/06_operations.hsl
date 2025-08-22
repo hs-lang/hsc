@@ -23,5 +23,40 @@ A long time ago in a galaxy far, far away...
             finn
         CloseManifest
     Order executed
+
+    Tune finn
+        Boost finn 10 CloseBoost
+    CloseTune
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
+
+    Tune finn
+        Boost 10 10 CloseBoost
+    CloseTune
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
+
+    Tune finn
+        Boost finn
+            Boost finn 10 CloseBoost
+        CloseBoost
+    CloseTune
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
 May the force be with you.
 
