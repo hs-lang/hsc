@@ -569,11 +569,11 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         )?;
 
         self.generate_binop(rhs, slt)?;
-        gen_write!(self.writer, "    mov x0, x8\n")?;
+        gen_write!(self.writer, "    mov x10, x8\n")?;
 
         self.generate_arg_addr(lhs, slt)?;
         gen_write!(self.writer, "    // storing new value for variable {id}\n")?;
-        gen_write!(self.writer, "    str x0, [x8]\n")?;
+        gen_write!(self.writer, "    str x10, [x8]\n")?;
         self.write_newline()
     }
 
@@ -584,7 +584,6 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
     ) -> codegen::error::Result<()> {
         use Binop::*;
 
-        gen_write!(self.writer, "    // entering binop `{binop}`\n")?;
         match binop {
             Eq { .. } => unreachable!("cannot have an eq inside operations"),
             Add { lhs, rhs }
@@ -592,6 +591,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             | Mul { lhs, rhs }
             | Div { lhs, rhs }
             | Mod { lhs, rhs } => {
+                gen_write!(self.writer, "    // entering binop `{binop}`\n")?;
                 self.generate_binop(rhs, slt)?;
                 gen_write!(self.writer, "    str x8, [sp, -0x10]!\n")?;
                 self.generate_binop(lhs, slt)?;
