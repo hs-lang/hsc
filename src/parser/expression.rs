@@ -10,7 +10,7 @@ where
 {
     pub fn expression(
         &mut self,
-        _slt_builder: &mut Builder,
+        slt_builder: &mut Builder,
         slt: &mut SymbolLookupTable<'prog>,
     ) -> Option<Expr<'prog>> {
         let Some(kind) = self.peek_kind() else {
@@ -130,6 +130,35 @@ where
                 let eq = crate::ir::Binop::Eq { lhs, rhs };
 
                 Some(Expr::Binop(eq))
+            }
+            T![If] => {
+                slt_builder.new_region(slt);
+                let then_slt = slt.last_children_mut().unwrap();
+                self.consume(T![If])?;
+                let cond = self.arg()?;
+
+                let mut then = Vec::new();
+                while !self.check_next(T![Else]) && !self.check_next(T![IfEnd]) {
+                    then.push(self.expression(slt_builder, then_slt)?);
+                }
+
+                let els = if self.check_next(T![Else]) {
+                    slt_builder.new_region(slt);
+                    let else_slt = slt.last_children_mut().unwrap();
+                    let mut els = Vec::new();
+                    self.consume(T![Else])?;
+
+                    while !self.check_next(T![IfEnd]) {
+                        els.push(self.expression(slt_builder, else_slt)?);
+                    }
+
+                    Some(els)
+                } else {
+                    None
+                };
+                self.consume(T![IfEnd]);
+
+                Some(Expr::IfThenElse { cond, then, els })
             }
             kind => {
                 error!("unknown start of expression: `{kind}`");

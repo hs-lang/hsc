@@ -34,7 +34,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 impl<'prog, W: io::Write> codegen::Codegen<'prog> for Codegen<'prog, W> {
     fn generate_program<'a>(
         &mut self,
-        program: &'prog crate::ir::Program,
+        program: &crate::ir::Program<'prog>,
         _slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
         childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
         cmd: &mut crate::command::Cmd<'prog>,
@@ -104,7 +104,7 @@ impl<'prog, W: io::Write> codegen::Codegen<'prog> for Codegen<'prog, W> {
 impl<'prog, W: io::Write> Codegen<'prog, W> {
     fn generate_fn_decl<'a>(
         &mut self,
-        func: &'prog Fn,
+        func: &Fn<'prog>,
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
         childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
     ) -> codegen::error::Result<()> {
@@ -139,10 +139,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 "    // allocate needed stack space for {} arguments\n",
                 func.id
             )?;
-            gen_write!(
-                self.writer,
-                "    add sp, sp, -{allocated_stack_size:#02x}\n"
-            )?;
+            gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
 
             self.write_newline()?;
 
@@ -221,15 +218,18 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_expr<'a>(
         &mut self,
-        stmt: &'prog Expr,
+        expr: &Expr<'prog>,
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
-        _childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
+        childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Expr::*;
 
-        match stmt {
+        match expr {
             Let { id, value } => self.generate_let(id, value, slt),
             FnCall { id, args, returns } => self.generate_fn_call(id, args, returns, slt),
+            IfThenElse { cond, then, els } => {
+                self.generate_if_then_else(cond, then, els.as_deref(), slt, childs)
+            }
             Binop(crate::ir::Binop::Eq { lhs, rhs }) => self.generate_eq(lhs, rhs, slt),
             Binop(_) => unreachable!(""),
         }
@@ -238,8 +238,8 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
     fn generate_fn_call<'a>(
         &mut self,
         id: &'prog str,
-        args: &'prog [Arg],
-        returns: &'prog [(&'prog str, Type<'prog>)],
+        args: &[Arg<'prog>],
+        returns: &[(&'prog str, Type<'prog>)],
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         let variadic = self.c.program.get_fn_variadic(id);
@@ -279,7 +279,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             )?;
             gen_write!(
                 self.writer,
-                "    str x8, [sp, -{allocated_space_returns:#02x}]!\n"
+                "    sub sub, sp, {allocated_space_returns:#02x}\n"
             )?;
             gen_write!(self.writer, "\n")?;
         }
@@ -350,7 +350,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
     fn generate_let<'a>(
         &mut self,
         id: &'prog str,
-        value: &'prog Arg,
+        value: &Arg<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         self.curr_var_id = Some(id);
@@ -373,7 +373,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_arg<'a>(
         &mut self,
-        arg: &'prog Arg,
+        arg: &Arg<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Arg::*;
@@ -462,7 +462,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_arg_addr<'a>(
         &mut self,
-        arg: &'prog Arg,
+        arg: &Arg<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Arg::*;
@@ -505,7 +505,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         }
     }
 
-    fn generate_lit(&mut self, lit: &'prog Lit) -> codegen::error::Result<()> {
+    fn generate_lit(&mut self, lit: &Lit<'prog>) -> codegen::error::Result<()> {
         use Lit::*;
 
         let curr_id = self.curr_var_id.unwrap_or_else(|| {
@@ -552,8 +552,8 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_eq<'a>(
         &mut self,
-        lhs: &'prog Arg<'prog>,
-        rhs: &'prog Binop<'prog>,
+        lhs: &Arg<'prog>,
+        rhs: &Binop<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         let id = match lhs {
@@ -579,7 +579,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_binop<'a>(
         &mut self,
-        binop: &'prog Binop<'prog>,
+        binop: &Binop<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Binop::*;
@@ -616,6 +616,109 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
     }
 
     fn write_newline(&mut self) -> codegen::error::Result<()> {
+        gen_write!(self.writer, "\n")
+    }
+
+    fn generate_if_then_else<'a>(
+        &mut self,
+        cond: &Arg<'prog>,
+        then: &[Expr<'prog>],
+        els: Option<&[Expr<'prog>]>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+        childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        // SAFETY: this is guarented by the parser
+        let then_slt = childs.next().expect("then_slt is guarented by the parser");
+        let mut then_childs = then_slt.childs();
+
+        gen_write!(self.writer, "// if block\n")?;
+        gen_write!(self.writer, "_if_{}_{}:\n", then_slt.region, then_slt.scope)?;
+        gen_write!(self.writer, "    // load cond\n")?;
+        self.generate_arg(cond, slt)?;
+
+        self.write_newline()?;
+        gen_write!(self.writer, "    // jump if needed on else\n")?;
+        gen_write!(self.writer, "    cmp x8, 0x0\n")?;
+        gen_write!(
+            self.writer,
+            "    // load link register and previous stack pointer onto the stack\n"
+        )?;
+        gen_write!(self.writer, "    stp x29, lr, [sp, -0x10]!\n")?;
+        gen_write!(self.writer, "    mov x29, sp\n")?;
+        gen_write!(
+            self.writer,
+            "    bne _else_{}_{}\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+
+        let allocated_stack_size = crate::math::align_bytes(then_slt.variables.len() * 8, 16);
+        self.write_newline()?;
+        gen_write!(self.writer, "    // then block\n")?;
+        gen_write!(
+            self.writer,
+            "    // allocate needed stack space for then block variables\n"
+        )?;
+        gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
+
+        for expr in then {
+            self.generate_expr(expr, &then_slt, &mut then_childs)?;
+        }
+
+        gen_write!(
+            self.writer,
+            "    // deallocate stack space for then block variables\n"
+        )?;
+        gen_write!(self.writer, "    add sp, sp, {allocated_stack_size:#02x}\n")?;
+        gen_write!(
+            self.writer,
+            "    b _if_end_{}_{}\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        self.write_newline()?;
+
+        gen_write!(
+            self.writer,
+            "_else_{}_{}:\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        if let Some(els) = els {
+            // SAFETY: this is guarented by the parser
+            let else_slt = childs.next().expect("else_slt is guarented by the parser");
+            let mut else_childs = else_slt.childs();
+
+            let allocated_stack_size = crate::math::align_bytes(else_slt.variables.len() * 8, 16);
+            gen_write!(self.writer, "    // else block\n")?;
+            gen_write!(
+                self.writer,
+                "    // allocate needed stack space for else block variables\n"
+            )?;
+            gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
+
+            for expr in els {
+                self.generate_expr(expr, &else_slt, &mut else_childs)?;
+            }
+
+            gen_write!(
+                self.writer,
+                "    // deallocate stack space for else block variables\n"
+            )?;
+            gen_write!(self.writer, "    add sp, sp, {allocated_stack_size:#02x}\n")?;
+        }
+
+        gen_write!(
+            self.writer,
+            "_if_end_{}_{}:\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        gen_write!(
+            self.writer,
+            "    // load return address and previous stack pointer\n"
+        )?;
+        gen_write!(self.writer, "    ldp x29, lr, [sp], 0x10\n")?;
         gen_write!(self.writer, "\n")
     }
 }

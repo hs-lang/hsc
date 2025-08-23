@@ -73,6 +73,11 @@ pub enum Expr<'prog> {
         args: Vec<Arg<'prog>>,
         returns: Vec<(&'prog str, Type<'prog>)>,
     },
+    IfThenElse {
+        cond: Arg<'prog>,
+        then: Vec<Expr<'prog>>,
+        els: Option<Vec<Expr<'prog>>>,
+    },
     Binop(Binop<'prog>),
 }
 
