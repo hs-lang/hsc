@@ -13,14 +13,25 @@ macro_rules! T {
     [True] => { $crate::lexer::token::TokenKind::True };
     [False] => { $crate::lexer::token::TokenKind::False };
     [Not] => { $crate::lexer::token::TokenKind::Not };
-    [Mul] => { $crate::lexer::token::TokenKind::Mul };
-    [Div] => { $crate::lexer::token::TokenKind::Div };
-    [Mod] => { $crate::lexer::token::TokenKind::Mod };
-    [Plus] => { $crate::lexer::token::TokenKind::Plus };
-    [Minus] => { $crate::lexer::token::TokenKind::Minus };
-    [Eq] => { $crate::lexer::token::TokenKind::Eq };
+    [OEq] => { $crate::lexer::token::TokenKind::OEq };
+    [CEq] => { $crate::lexer::token::TokenKind::CEq };
+    [OAdd] => { $crate::lexer::token::TokenKind::OAdd };
+    [CAdd] => { $crate::lexer::token::TokenKind::CAdd };
+    [OSub] => { $crate::lexer::token::TokenKind::OSub };
+    [CSub] => { $crate::lexer::token::TokenKind::CSub };
+    [OMul] => { $crate::lexer::token::TokenKind::OMul };
+    [CMul] => { $crate::lexer::token::TokenKind::CMul };
+    [ODiv] => { $crate::lexer::token::TokenKind::ODiv };
+    [CDiv] => { $crate::lexer::token::TokenKind::CDiv };
+    [OMod] => { $crate::lexer::token::TokenKind::OMod };
+    [CMod] => { $crate::lexer::token::TokenKind::CMod };
+    [OGen] => { $crate::lexer::token::TokenKind::OGen };
+    [CGen] => { $crate::lexer::token::TokenKind::CGen };
+    [Beacon] => { $crate::lexer::token::TokenKind::Beacon };
+    [Retrieve] => { $crate::lexer::token::TokenKind::Retrieve };
+    [TyPtr] => { $crate::lexer::token::TokenKind::TyPtr };
     [TyInt] => { $crate::lexer::token::TokenKind::TyInt };
-    [TyString] => { $crate::lexer::token::TokenKind::TyString };
+    [TyStr] => { $crate::lexer::token::TokenKind::TyStr };
     [TyBool] => { $crate::lexer::token::TokenKind::TyBool };
     [OAssign] => { $crate::lexer::token::TokenKind::OAssign };
     [Assign] => { $crate::lexer::token::TokenKind::Assign };
@@ -34,6 +45,9 @@ macro_rules! T {
     [CFnDecl] => { $crate::lexer::token::TokenKind::CFnDecl };
     [OFnParams] => { $crate::lexer::token::TokenKind::OFnParams };
     [CFnParams] => { $crate::lexer::token::TokenKind::CFnParams };
+    [OFnCallReturn] => { $crate::lexer::token::TokenKind::OFnCallReturn };
+    [OFnReturn] => { $crate::lexer::token::TokenKind::OFnReturn };
+    [CFnReturn] => { $crate::lexer::token::TokenKind::CFnReturn };
     [OFnCall] => { $crate::lexer::token::TokenKind::OFnCall };
     [CFnCall] => { $crate::lexer::token::TokenKind::CFnCall };
     [Variadic] => { $crate::lexer::token::TokenKind::Variadic };
@@ -89,17 +103,27 @@ pub enum TokenKind {
 
     // Puncts
     Not,
-    Mul,
-    Div,
-    Mod,
-    Plus,
-    Minus,
-    #[allow(dead_code)]
-    Eq,
+    OEq,
+    CEq,
+    OAdd,
+    CAdd,
+    OSub,
+    CSub,
+    OMul,
+    CMul,
+    ODiv,
+    CDiv,
+    OMod,
+    CMod,
+    OGen,
+    CGen,
+    Beacon,
+    Retrieve,
 
     // Types
+    TyPtr,
     TyInt,
-    TyString,
+    TyStr,
     TyBool,
 
     // Keywords
@@ -115,6 +139,9 @@ pub enum TokenKind {
     CFnDecl,
     OFnParams,
     CFnParams,
+    OFnCallReturn,
+    OFnReturn,
+    CFnReturn,
     OFnCall,
     CFnCall,
     Variadic,
@@ -122,6 +149,7 @@ pub enum TokenKind {
     CExtrnFn,
 }
 
+// TODO: rework this function
 impl fmt::Display for TokenKind {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -137,14 +165,25 @@ impl fmt::Display for TokenKind {
                 T![True] => "True",
                 T![False] => "False",
                 T![Not] => "Not",
-                T![Mul] => "Mul",
-                T![Div] => "Div",
-                T![Mod] => "Mod",
-                T![Plus] => "Plus",
-                T![Minus] => "Minus",
-                T![Eq] => "Eq",
+                T![OEq] => "Open Eq",
+                T![CEq] => "Close Eq",
+                T![OAdd] => "Open  Add",
+                T![CAdd] => "Close Add",
+                T![OSub] => "Open  Sub",
+                T![CSub] => "Close Sub",
+                T![OMul] => "Open  Mul",
+                T![CMul] => "Close Mul",
+                T![ODiv] => "Open  Div",
+                T![CDiv] => "Close Div",
+                T![OMod] => "Open  Mod",
+                T![CMod] => "Close Mod",
+                T![OGen] => "<",
+                T![CGen] => ">",
+                T![Beacon] => "Beacon",
+                T![Retrieve] => "Retrieve",
+                T![TyPtr] => "Type ptr",
                 T![TyInt] => "Type int",
-                T![TyString] => "Type string",
+                T![TyStr] => "Type string",
                 T![TyBool] => "Type bool",
                 T![OAssign] => "Open assign",
                 T![Assign] => "Assign",
@@ -159,7 +198,10 @@ impl fmt::Display for TokenKind {
                 T![OFnCall] => "Opening function call",
                 T![CFnCall] => "Closing function call",
                 T![OFnParams] => "Opening function parameters",
-                T![CFnParams] => "Closing function params",
+                T![CFnParams] => "Closing function parameters",
+                T![OFnReturn] => "Opening function return",
+                T![OFnCallReturn] => "Opening function call return",
+                T![CFnReturn] => "Closing function return",
                 T![Variadic] => "Variadic declaration",
                 T![OExtrnFn] => "Open extrn function declaration",
                 T![CExtrnFn] => "Clone extrn function declaration",

@@ -31,6 +31,19 @@ impl<'prog> Arena<'prog> {
         }
     }
 
+    pub fn objdup<T>(&self, t: &T) -> &'prog T {
+        unsafe {
+            let ptr = (t as *const T) as *const u8;
+            let size = core::mem::size_of::<T>();
+            let chunk = self.arena_alloc(size);
+            core::ptr::copy_nonoverlapping(ptr, chunk, size);
+            chunk
+                .cast::<T>()
+                .as_ref()
+                .expect("error while dumping a struct")
+        }
+    }
+
     pub fn strdup(&self, str: &str) -> &'prog str {
         unsafe {
             let chunk = self.arena_alloc(str.len());
@@ -98,9 +111,9 @@ impl<'prog> Drop for Arena<'prog> {
 
 impl Region {
     pub unsafe fn new(capacity: usize) -> *mut Self {
-        let size_bytes = core::mem::size_of::<*const ()>() * capacity;
+        let size_bytes = core::mem::size_of::<*const u8>() * capacity;
         let layout =
-            core::alloc::Layout::array::<*const ()>(size_bytes).expect("cannot allocate memory");
+            core::alloc::Layout::array::<*const u8>(size_bytes).expect("cannot allocate memory");
 
         assert!(layout.size() <= isize::MAX as usize, "allocation too large");
         let data = std::alloc::alloc(layout);
@@ -119,9 +132,9 @@ impl Region {
 
 impl Drop for Region {
     fn drop(&mut self) {
-        let size_bytes = core::mem::size_of::<*const ()>() * self.capacity;
+        let size_bytes = core::mem::size_of::<*const u8>() * self.capacity;
         let layout =
-            core::alloc::Layout::array::<*const ()>(size_bytes).expect("unable to create layout");
+            core::alloc::Layout::array::<*const u8>(size_bytes).expect("unable to create layout");
         unsafe {
             std::alloc::dealloc(self.data, layout);
         }
@@ -141,5 +154,17 @@ mod tests {
         assert_eq!(str_1, "Hello World!");
         assert_eq!(str_2, "Hello World!");
         assert_eq!(arena.count, 1);
+    }
+
+    #[test]
+    fn test_objdup() {
+        struct T(usize);
+
+        let arena = Arena::new();
+        let t_1 = arena.objdup(&T(1));
+        let t_2 = arena.objdup(&T(2));
+
+        assert_eq!(t_1.0, 1);
+        assert_eq!(t_2.0, 2);
     }
 }

@@ -1,4 +1,4 @@
-use crate::ir::{Arg, Expr, InnerType, Lit, Type};
+use crate::ir::{Arg, Expr, Lit, Type};
 use crate::lexer::token::Token;
 use crate::parser::Parser;
 
@@ -10,10 +10,10 @@ where
 {
     pub fn expression(
         &mut self,
-        _slt_builder: &mut Builder,
+        slt_builder: &mut Builder,
         slt: &mut SymbolLookupTable<'prog>,
     ) -> Option<Expr<'prog>> {
-        let Some(kind) = self.peek() else {
+        let Some(kind) = self.peek_kind() else {
             error!("Expected a statement and found nothing");
             self.err_cpt += 1;
             return None;
@@ -42,17 +42,11 @@ where
                 let value = self.arg()?;
 
                 let res = match value {
-                    Arg::Lit(Lit::Str(s)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Str), s), ident.span)
-                    }
-                    Arg::Lit(Lit::Int(i)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Int), i), ident.span)
-                    }
-                    Arg::Lit(Lit::Bool(b)) => {
-                        slt.add_variable((id, Type::Val(InnerType::Bool), b), ident.span)
-                    }
+                    Arg::Lit(Lit::Str(s)) => slt.add_variable((id, Type::Str, s), ident.span),
+                    Arg::Lit(Lit::Int(i)) => slt.add_variable((id, Type::Int, i), ident.span),
+                    Arg::Lit(Lit::Bool(b)) => slt.add_variable((id, Type::Bool, b), ident.span),
                     _ => {
-                        error!("invalid expression found");
+                        error!("invalid argument found");
                         self.err_cpt += 1;
                         return None;
                     }
@@ -87,113 +81,90 @@ where
                 let id = self.arena.strdup(self.text(ident));
 
                 let mut args = Vec::new();
-                while !self.check_next(T![CFnCall]) {
-                    args.push(self.arg()?);
+                if self.check_next(T![OFnParams]) {
+                    self.consume(T![OFnParams])?;
+
+                    while !self.check_next(T![CFnParams]) {
+                        args.push(self.arg()?);
+                    }
+
+                    self.consume(T![CFnParams])?;
                 }
 
+                let mut returns = Vec::new();
+                if self.check_next(T![OFnCallReturn]) {
+                    self.consume(T![OFnCallReturn])?;
+
+                    while !self.check_next(T![CFnReturn]) {
+                        let ty = self.ty()?;
+                        let value = self.arg()?;
+
+                        if let Arg::Id(id) = value {
+                            let (id, ty) = if let Some(var) = slt.get_variable(id) {
+                                (id, var.ty)
+                            } else {
+                                slt.add_variable((id, ty), self.span);
+                                (id, ty)
+                            };
+                            returns.push((id, ty));
+                        } else {
+                            error!("invalid argument found");
+                            self.err_cpt += 1;
+                            return None;
+                        }
+                    }
+
+                    self.consume(T![CFnReturn])?;
+                }
                 self.consume(T![CFnCall])?;
-                Some(Expr::FnCall { id, args })
+
+                Some(Expr::FnCall { id, args, returns })
             }
-            //T![OAssign] => {
-            //    self.consume(T![OAssign])?;
-            //    let Some(ident) = self.next() else {
-            //        error!("expected identifier after `assign` but found nothing");
-            //        self.err_cpt += 1;
-            //        return None;
-            //    };
+            T![OEq] => {
+                self.consume(T![OEq])?;
+                let lhs = self.arg()?;
+                let rhs = self.binop()?;
+                self.consume(T![CEq])?;
 
-            //    if ident.kind != T![ID] {
-            //        error!(
-            //            "expected identifier after `assign` but found {} instead",
-            //            ident.kind
-            //        );
-            //        self.err_cpt += 1;
-            //        return None;
-            //    }
+                let rhs = self.arena.objdup(&rhs);
+                let eq = crate::ir::Binop::Eq { lhs, rhs };
 
-            //    let id = self.arena.strdup(self.text(ident));
+                Some(Expr::Binop(eq))
+            }
+            T![If] => {
+                slt_builder.new_region(slt);
+                let then_slt = slt.last_children_mut().unwrap();
+                self.consume(T![If])?;
+                let cond = self.arg()?;
 
-            //    let mut ops = Vec::new();
-            //    while !self.check_next(T![CAssign]) {
-            //        ops.push(self.unary_op()?);
-            //    }
+                let mut then = Vec::new();
+                while !self.check_next(T![Else]) && !self.check_next(T![IfEnd]) {
+                    then.push(self.expression(slt_builder, then_slt)?);
+                }
 
-            //    self.consume(T![CAssign])?;
-            //    Some(Stmt::Assign { id, ops })
-            //}
-            //T![if] => {
-            //    self.consume(T![if]);
+                let els = if self.check_next(T![Else]) {
+                    slt_builder.new_region(slt);
+                    let else_slt = slt.last_children_mut().unwrap();
+                    let mut els = Vec::new();
+                    self.consume(T![Else])?;
 
-            //    let condition = Box::new(self.expression());
-            //    let mut body = Vec::new();
+                    while !self.check_next(T![IfEnd]) {
+                        els.push(self.expression(slt_builder, else_slt)?);
+                    }
 
-            //    while !self.at(T![else]) && !self.at(T![if_end]) {
-            //        body.push(self.statement());
-            //    }
+                    Some(els)
+                } else {
+                    None
+                };
+                self.consume(T![IfEnd]);
 
-            //    let else_stmt = if self.at(T![else]) {
-            //        self.consume(T![else]);
-            //        let mut else_body = Vec::new();
-
-            //        while !self.at(T![if_end]) {
-            //            else_body.push(self.statement());
-            //        }
-
-            //        Some(else_body)
-            //    } else {
-            //        None
-            //    };
-
-            //    self.consume(T![if_end]);
-            //    ast::Stmt::IfStmt {
-            //        condition,
-            //        body,
-            //        else_stmt,
-            //    }
-            //}
+                Some(Expr::IfThenElse { cond, then, els })
+            }
             kind => {
-                error!("unknown start of statement: `{kind}`");
+                error!("unknown start of expression: `{kind}`");
                 self.err_cpt += 1;
                 None
             }
         }
     }
-
-    //fn unary_op(&mut self) -> Option<Unop<'prog>> {
-    //    let Some(kind) = self.peek() else {
-    //        error!("expected an unary operator and found nothing");
-    //        self.err_cpt += 1;
-    //        return None;
-    //    };
-
-    //    let unop = match kind {
-    //        T![Plus] => Unop {
-    //            op: crate::ir::Op::Add,
-    //            value: self.expression()?,
-    //        },
-    //        T![Minus] => Unop {
-    //            op: crate::ir::Op::Sub,
-    //            value: self.expression()?,
-    //        },
-    //        T![Div] => Unop {
-    //            op: crate::ir::Op::Div,
-    //            value: self.expression()?,
-    //        },
-    //        T![Mul] => Unop {
-    //            op: crate::ir::Op::Mul,
-    //            value: self.expression()?,
-    //        },
-    //        T![Mod] => Unop {
-    //            op: crate::ir::Op::Mod,
-    //            value: self.expression()?,
-    //        },
-    //        kind => {
-    //            error!("unknown start of unary operator: `{kind}`");
-    //            self.err_cpt += 1;
-    //            return None;
-    //        }
-    //    };
-
-    //    Some(unop)
-    //}
 }

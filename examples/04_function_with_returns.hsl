@@ -1,0 +1,43 @@
+Hypersignal printf Starfield 1
+    Holotext
+Jamsignal
+
+A long time ago in a hello_world far, far away...
+    CargoDock
+        10
+    CloseCargo
+May the force be with you.
+
+
+A long time ago in a galaxy far, far away...
+    I am a big deal in the resistance. finn
+    Judge me by my size, do you ? -10
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
+
+    Execute order hello_world
+        UnloadCargo
+            Credit finn
+        CloseCargo
+    Order executed
+
+    Execute order hello_world
+        UnloadCargo
+            Credit poe
+        CloseCargo
+    Order executed
+
+    Execute order printf
+        Manifest
+            "%d %d\n"
+            finn
+            poe
+        CloseManifest
+    Order executed
+May the force be with you.
+

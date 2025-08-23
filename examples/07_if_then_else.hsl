@@ -1,0 +1,39 @@
+Hypersignal printf Starfield 1
+    Holotext
+Jamsignal
+
+A long time ago in a galaxy far, far away...
+    I am a big deal in the resistance. finn
+    Judge me by my size, do you ? -10
+
+    
+    Do, or do not. There is no try. finn
+        Execute order printf
+            Manifest
+                "Do\n"
+            CloseManifest
+        Order executed
+    These aren't the droids you're looking for.
+        Execute order printf
+            Manifest
+                "Don't\n"
+            CloseManifest
+        Order executed
+    You have failed me for the last time.
+
+    Tune finn 0 CloseTune
+
+    Do, or do not. There is no try. finn
+        Execute order printf
+            Manifest
+                "Do\n"
+            CloseManifest
+        Order executed
+    These aren't the droids you're looking for.
+        Execute order printf
+            Manifest
+                "Don't\n"
+            CloseManifest
+        Order executed
+    You have failed me for the last time.
+May the force be with you.

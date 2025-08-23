@@ -42,7 +42,7 @@ impl<'prog> SymbolLookupTable<'prog> {
         self.funcs.insert(func.id, (func, span))
     }
 
-    pub fn get_variable(&self, name: &str) -> Option<&Variable<'_>> {
+    pub fn get_variable(&self, name: &str) -> Option<&Variable<'prog>> {
         self.variables.get(name).map(|(var, _)| var)
     }
 
@@ -54,7 +54,7 @@ impl<'prog> SymbolLookupTable<'prog> {
 #[derive(Debug)]
 pub struct Variable<'prog> {
     pub id: &'prog str,
-    pub ty: crate::ir::Type,
+    pub ty: crate::ir::Type<'prog>,
     pub value: Value<'prog>,
     pub offset: i32,
     pub scope: u32,
@@ -63,8 +63,9 @@ pub struct Variable<'prog> {
 #[derive(Debug)]
 pub struct Fn<'prog> {
     pub id: &'prog str,
-    pub ty: crate::ir::Type,
-    pub args: Vec<crate::ir::Type>,
+    pub ty: crate::ir::Type<'prog>,
+    pub args: Vec<crate::ir::Type<'prog>>,
+    pub returns: Vec<crate::ir::Arg<'prog>>,
     pub variadic: Option<usize>,
 }
 
@@ -175,8 +176,8 @@ impl<'a, 'prog> Iterator for ChildIterator<'a, 'prog> {
 macro_rules! impl_variable_from {
     (@inner) => {};
     (@inner $inner_ty:tt < $from_ty:ty > ; $($tt:tt)*) => {
-        impl<'prog> From<(&'prog str, crate::ir::Type, $from_ty)> for Variable<'prog> {
-            fn from(value: (&'prog str, crate::ir::Type, $from_ty)) -> Self {
+        impl<'prog> From<(&'prog str, crate::ir::Type<'prog>, $from_ty)> for Variable<'prog> {
+            fn from(value: (&'prog str, crate::ir::Type<'prog>, $from_ty)) -> Self {
                 Variable {
                     id: value.0,
                     ty: value.1,
@@ -200,8 +201,8 @@ impl_variable_from! {
     Int<i64>;
 }
 
-impl<'prog> From<(&'prog str, crate::ir::Type)> for Variable<'prog> {
-    fn from(value: (&'prog str, crate::ir::Type)) -> Self {
+impl<'prog> From<(&'prog str, crate::ir::Type<'prog>)> for Variable<'prog> {
+    fn from(value: (&'prog str, crate::ir::Type<'prog>)) -> Self {
         Variable {
             id: value.0,
             ty: value.1,
@@ -218,6 +219,7 @@ impl<'prog> From<&crate::ir::Fn<'prog>> for Fn<'prog> {
             id: value.id,
             ty: crate::ir::Type::Void,
             args: value.args.iter().map(|a| a.1).collect(),
+            returns: value.returns.clone(),
             variadic: value.variadic,
         }
     }
@@ -229,6 +231,7 @@ impl<'prog> From<&crate::ir::Extrn<'prog>> for Fn<'prog> {
             id: value.id,
             ty: crate::ir::Type::Void,
             args: value.args.clone(),
+            returns: vec![],
             variadic: value.variadic,
         }
     }

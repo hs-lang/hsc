@@ -4,6 +4,8 @@ Jamsignal                                     <(-.-)> End the declaration of ext
 
 A long time ago in a galaxy far, far away...  <(-.-)> Start of a function called galaxy (this is the name of the `main` function)
   Execute order printf                        <(-.-)> Call the printf function with only a string literal
-    "Hello World!\n"
+    Manifest
+      "Hello World!\n"
+    CloseManifest
   Order executed
 May the force be with you.                    <(-.-)> End of the galaxy (main) function

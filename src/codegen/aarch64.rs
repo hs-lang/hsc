@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::codegen;
-use crate::ir::{Arg, Expr, Fn, Lit};
+use crate::ir::{Arg, Binop, Expr, Fn, Lit, Type};
 
 pub struct Codegen<'prog, W> {
     // Inputs
@@ -34,7 +34,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 impl<'prog, W: io::Write> codegen::Codegen<'prog> for Codegen<'prog, W> {
     fn generate_program<'a>(
         &mut self,
-        program: &'prog crate::ir::Program,
+        program: &crate::ir::Program<'prog>,
         _slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
         childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
         cmd: &mut crate::command::Cmd<'prog>,
@@ -104,7 +104,7 @@ impl<'prog, W: io::Write> codegen::Codegen<'prog> for Codegen<'prog, W> {
 impl<'prog, W: io::Write> Codegen<'prog, W> {
     fn generate_fn_decl<'a>(
         &mut self,
-        func: &'prog Fn,
+        func: &Fn<'prog>,
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
         childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
     ) -> codegen::error::Result<()> {
@@ -139,10 +139,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 "    // allocate needed stack space for {} arguments\n",
                 func.id
             )?;
-            gen_write!(
-                self.writer,
-                "    add sp, sp, -{allocated_stack_size:#02x}\n"
-            )?;
+            gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
 
             self.write_newline()?;
 
@@ -162,10 +159,10 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             }
 
             for i in 0..stack_args {
-                let var_offset = allocated_args_space + 2 + i;
+                let var_offset = allocated_args_space + (2 + i) * 8;
                 arg_index += 1;
 
-                gen_write!(self.writer, "    ldr x8, [x29, -{var_offset:#02x}]\n")?;
+                gen_write!(self.writer, "    ldr x8, [x29, {var_offset:#02x}]\n")?;
                 gen_write!(self.writer, "    str x8, [x29, -{:#02x}]\n", arg_index * 8)?;
             }
 
@@ -186,6 +183,30 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             gen_write!(self.writer, "\n")?;
         }
 
+        if !func.returns.is_empty() {
+            let reg_args = func.variadic.unwrap_or(if func.args.len() > 7 {
+                7
+            } else {
+                func.args.len()
+            });
+            let stack_args = func.args.len() - reg_args;
+
+            gen_write!(
+                self.writer,
+                "    // generate return values for {}\n",
+                func.id
+            )?;
+
+            let offset = allocated_stack_size + (2 + stack_args) * 8;
+            for (i, arg) in func.returns.iter().enumerate() {
+                self.generate_arg(arg, slt)?;
+
+                gen_write!(self.writer, "    str x8, [x29, {:#02x}]\n", offset + i * 8)?;
+            }
+
+            self.write_newline()?;
+        }
+
         gen_write!(
             self.writer,
             "    // load return address and previous stack pointer\n"
@@ -197,22 +218,28 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_expr<'a>(
         &mut self,
-        stmt: &'prog Expr,
+        expr: &Expr<'prog>,
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
-        _childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
+        childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Expr::*;
 
-        match stmt {
+        match expr {
             Let { id, value } => self.generate_let(id, value, slt),
-            FnCall { id, args } => self.generate_fn_call(id, args, slt),
+            FnCall { id, args, returns } => self.generate_fn_call(id, args, returns, slt),
+            IfThenElse { cond, then, els } => {
+                self.generate_if_then_else(cond, then, els.as_deref(), slt, childs)
+            }
+            Binop(crate::ir::Binop::Eq { lhs, rhs }) => self.generate_eq(lhs, rhs, slt),
+            Binop(_) => unreachable!(""),
         }
     }
 
     fn generate_fn_call<'a>(
         &mut self,
         id: &'prog str,
-        args: &'prog [Arg],
+        args: &[Arg<'prog>],
+        returns: &[(&'prog str, Type<'prog>)],
         slt: &'a crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         let variadic = self.c.program.get_fn_variadic(id);
@@ -223,6 +250,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         let stack_args = args.len() - reg_args;
 
         let allocated_space = crate::math::align_bytes(stack_args * 8, 16);
+        let allocated_space_returns = crate::math::align_bytes(returns.len() * 8, 16);
 
         gen_write!(self.writer, "    // calling {id} function\n")?;
 
@@ -242,6 +270,18 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 gen_write!(self.writer, "    mov x{i}, x8\n")?;
                 gen_write!(self.writer, "\n")?;
             }
+        }
+
+        if !returns.is_empty() {
+            gen_write!(
+                self.writer,
+                "    // allocate needed stack space for the function returns\n"
+            )?;
+            gen_write!(
+                self.writer,
+                "    sub sub, sp, {allocated_space_returns:#02x}\n"
+            )?;
+            gen_write!(self.writer, "\n")?;
         }
 
         if stack_args > 0 {
@@ -278,13 +318,39 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
             gen_write!(self.writer, "\n")?;
         }
 
+        if !returns.is_empty() {
+            gen_write!(
+                self.writer,
+                "    // load the returned value onto the correct variables\n"
+            )?;
+            let mut offset = 0;
+
+            for (id, _) in returns {
+                gen_write!(self.writer, "    ldr x8, [sp, {offset:#02x}]\n")?;
+                // SAFETY: this is safe because of the parser (the variable has been pushed to the slt)
+                let var = slt.get_variable(id).unwrap();
+                gen_write!(self.writer, "    str x8, [x29, -{:#02x}]\n", var.offset * 8)?;
+                offset += 9;
+            }
+
+            gen_write!(
+                self.writer,
+                "    // pop from the stack the {id} function returns\n"
+            )?;
+            gen_write!(
+                self.writer,
+                "    add sp, sp, {allocated_space_returns:#02x}\n"
+            )?;
+            gen_write!(self.writer, "\n")?;
+        }
+
         Ok(())
     }
 
     fn generate_let<'a>(
         &mut self,
         id: &'prog str,
-        value: &'prog Arg,
+        value: &Arg<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         self.curr_var_id = Some(id);
@@ -307,12 +373,12 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
     fn generate_arg<'a>(
         &mut self,
-        expr: &'prog Arg,
+        arg: &Arg<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
         use Arg::*;
 
-        match expr {
+        match arg {
             Lit(lit) => self.generate_lit(lit),
             Id(id) => {
                 // SAFETY: this is safe because of the semantic controls
@@ -339,10 +405,107 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
                 gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
                 gen_write!(self.writer, "\n")
             }
+
+            Deref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} into x8\n", id)?;
+                gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
+                gen_write!(self.writer, "    ldr x8, [x8]\n")?;
+                gen_write!(self.writer, "\n")
+            }
+            Ref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} addr x8\n", id)?;
+                gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?;
+                gen_write!(self.writer, "\n")
+            }
         }
     }
 
-    fn generate_lit(&mut self, lit: &'prog Lit) -> codegen::error::Result<()> {
+    fn generate_arg_addr<'a>(
+        &mut self,
+        arg: &Arg<'prog>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        use Arg::*;
+
+        match arg {
+            Id(id) | Deref(id) => {
+                // SAFETY: this is safe because of the semantic controls
+                let var = slt.find_variable(id).unwrap();
+                let diff = slt.scope - var.scope;
+
+                gen_write!(self.writer, "    mov x9, x29\n")?;
+
+                if diff > 0 {
+                    gen_write!(
+                        self.writer,
+                        "    // climb up the stack calls to get to {} scope\n",
+                        id
+                    )?;
+                }
+
+                for _ in 0..diff {
+                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
+                }
+
+                self.write_newline()?;
+
+                gen_write!(self.writer, "    // load var {} addr into x8\n", id)?;
+
+                match arg {
+                    Id(_) => gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?,
+                    Deref(_) => {
+                        gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?
+                    }
+                    _ => unreachable!(),
+                }
+
+                gen_write!(self.writer, "\n")
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn generate_lit(&mut self, lit: &Lit<'prog>) -> codegen::error::Result<()> {
         use Lit::*;
 
         let curr_id = self.curr_var_id.unwrap_or_else(|| {
@@ -387,7 +550,175 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         self.write_newline()
     }
 
+    fn generate_eq<'a>(
+        &mut self,
+        lhs: &Arg<'prog>,
+        rhs: &Binop<'prog>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        let id = match lhs {
+            Arg::Deref(id) => id,
+            Arg::Ref(id) => id,
+            Arg::Id(id) => id,
+            // SAFETY: this is safe because of the grammar
+            _ => unreachable!(),
+        };
+        gen_write!(
+            self.writer,
+            "    // entering equal expression for variable {id}\n"
+        )?;
+
+        self.generate_binop(rhs, slt)?;
+        gen_write!(self.writer, "    mov x10, x8\n")?;
+
+        self.generate_arg_addr(lhs, slt)?;
+        gen_write!(self.writer, "    // storing new value for variable {id}\n")?;
+        gen_write!(self.writer, "    str x10, [x8]\n")?;
+        self.write_newline()
+    }
+
+    fn generate_binop<'a>(
+        &mut self,
+        binop: &Binop<'prog>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        use Binop::*;
+
+        match binop {
+            Eq { .. } => unreachable!("cannot have an eq inside operations"),
+            Add { lhs, rhs }
+            | Sub { lhs, rhs }
+            | Mul { lhs, rhs }
+            | Div { lhs, rhs }
+            | Mod { lhs, rhs } => {
+                gen_write!(self.writer, "    // entering binop `{binop}`\n")?;
+                self.generate_binop(rhs, slt)?;
+                gen_write!(self.writer, "    str x8, [sp, -0x10]!\n")?;
+                self.generate_binop(lhs, slt)?;
+                gen_write!(self.writer, "    ldr x9, [sp], 0x10\n")?;
+
+                // (a * b) + c
+                match binop {
+                    Add { .. } => gen_write!(self.writer, "    add x8, x8, x9\n"),
+                    Sub { .. } => gen_write!(self.writer, "    sub x8, x8, x9\n"),
+                    Mul { .. } => gen_write!(self.writer, "    mul x8, x8, x9\n"),
+                    Div { .. } => gen_write!(self.writer, "    sdiv x8, x8, x9\n"),
+                    Mod { .. } => {
+                        gen_write!(self.writer, "    sdiv x10, x8, x9\n")?;
+                        gen_write!(self.writer, "    mul x10, x10, x9\n")?;
+                        gen_write!(self.writer, "    subs x8, x8, x10\n")
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Arg(arg) => self.generate_arg(arg, slt),
+        }
+    }
+
     fn write_newline(&mut self) -> codegen::error::Result<()> {
+        gen_write!(self.writer, "\n")
+    }
+
+    fn generate_if_then_else<'a>(
+        &mut self,
+        cond: &Arg<'prog>,
+        then: &[Expr<'prog>],
+        els: Option<&[Expr<'prog>]>,
+        slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
+        childs: &mut crate::parser::slt::ChildIterator<'a, 'prog>,
+    ) -> codegen::error::Result<()> {
+        // SAFETY: this is guarented by the parser
+        let then_slt = childs.next().expect("then_slt is guarented by the parser");
+        let mut then_childs = then_slt.childs();
+
+        gen_write!(self.writer, "// if block\n")?;
+        gen_write!(self.writer, "_if_{}_{}:\n", then_slt.region, then_slt.scope)?;
+        gen_write!(self.writer, "    // load cond\n")?;
+        self.generate_arg(cond, slt)?;
+
+        self.write_newline()?;
+        gen_write!(self.writer, "    // jump if needed on else\n")?;
+        gen_write!(self.writer, "    cmp x8, 0x0\n")?;
+        gen_write!(
+            self.writer,
+            "    // load link register and previous stack pointer onto the stack\n"
+        )?;
+        gen_write!(self.writer, "    stp x29, lr, [sp, -0x10]!\n")?;
+        gen_write!(self.writer, "    mov x29, sp\n")?;
+        gen_write!(
+            self.writer,
+            "    bne _else_{}_{}\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+
+        let allocated_stack_size = crate::math::align_bytes(then_slt.variables.len() * 8, 16);
+        self.write_newline()?;
+        gen_write!(self.writer, "    // then block\n")?;
+        gen_write!(
+            self.writer,
+            "    // allocate needed stack space for then block variables\n"
+        )?;
+        gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
+
+        for expr in then {
+            self.generate_expr(expr, &then_slt, &mut then_childs)?;
+        }
+
+        gen_write!(
+            self.writer,
+            "    // deallocate stack space for then block variables\n"
+        )?;
+        gen_write!(self.writer, "    add sp, sp, {allocated_stack_size:#02x}\n")?;
+        gen_write!(
+            self.writer,
+            "    b _if_end_{}_{}\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        self.write_newline()?;
+
+        gen_write!(
+            self.writer,
+            "_else_{}_{}:\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        if let Some(els) = els {
+            // SAFETY: this is guarented by the parser
+            let else_slt = childs.next().expect("else_slt is guarented by the parser");
+            let mut else_childs = else_slt.childs();
+
+            let allocated_stack_size = crate::math::align_bytes(else_slt.variables.len() * 8, 16);
+            gen_write!(self.writer, "    // else block\n")?;
+            gen_write!(
+                self.writer,
+                "    // allocate needed stack space for else block variables\n"
+            )?;
+            gen_write!(self.writer, "    sub sp, sp, {allocated_stack_size:#02x}\n")?;
+
+            for expr in els {
+                self.generate_expr(expr, &else_slt, &mut else_childs)?;
+            }
+
+            gen_write!(
+                self.writer,
+                "    // deallocate stack space for else block variables\n"
+            )?;
+            gen_write!(self.writer, "    add sp, sp, {allocated_stack_size:#02x}\n")?;
+        }
+
+        gen_write!(
+            self.writer,
+            "_if_end_{}_{}:\n",
+            then_slt.region,
+            then_slt.scope
+        )?;
+        gen_write!(
+            self.writer,
+            "    // load return address and previous stack pointer\n"
+        )?;
+        gen_write!(self.writer, "    ldp x29, lr, [sp], 0x10\n")?;
         gen_write!(self.writer, "\n")
     }
 }

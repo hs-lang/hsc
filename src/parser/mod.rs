@@ -1,13 +1,15 @@
 use slt::{Builder, SymbolLookupTable};
 
-use crate::ir::{Extrn, Fn, InnerType, Program, Type};
+use crate::ir::{Extrn, Fn, Program};
 use crate::lexer::token::{Token, TokenKind};
 use crate::lexer::Lexer;
 
 mod arg;
+mod binop;
 mod expression;
 mod literal;
 pub mod slt;
+mod r#type;
 
 pub struct Parser<'input, 'prog, I>
 where
@@ -48,17 +50,21 @@ where
         token.text(self.input)
     }
 
-    pub(crate) fn peek(&mut self) -> Option<TokenKind> {
-        self.tokens.peek().map(|t| t.kind)
+    pub(crate) fn peek(&mut self) -> Option<&Token> {
+        self.tokens.peek()
+    }
+
+    pub(crate) fn peek_kind(&mut self) -> Option<TokenKind> {
+        self.peek().map(|t| t.kind)
     }
 
     /// Check if the next token is of a given kind
     pub(crate) fn check_next(&mut self, kind: TokenKind) -> bool {
-        let Some(t_kind) = self.peek() else {
+        let Some(peek_kind) = self.peek_kind() else {
             return false;
         };
 
-        t_kind == kind
+        peek_kind == kind
     }
 
     pub(crate) fn next(&mut self) -> Option<Token> {
@@ -110,7 +116,7 @@ where
     ) -> Option<()> {
         while !self.check_next(T![EOF]) {
             // SAFETY: this is safe since the while loop is still looping
-            match self.peek().unwrap() {
+            match self.peek_kind().unwrap() {
                 T![OFnDecl1] => program.func.push(self.parse_function(slt_builder, slt)?),
                 T![OExtrnFn] => program.extrn.push(self.parse_extrn_function(slt)?),
                 _ => todo!("handle unexpected token"),
@@ -137,23 +143,7 @@ where
 
         let mut args = Vec::new();
         while !self.check_next(T![CExtrnFn]) {
-            let Some(kind) = self.peek() else {
-                error!("expected type token in function params");
-                return None;
-            };
-
-            let ty = match kind {
-                T![TyInt] => Type::Val(InnerType::Int),
-                T![TyString] => Type::Val(InnerType::Str),
-                T![TyBool] => Type::Val(InnerType::Bool),
-                _ => {
-                    error!("unexpected token for type");
-                    self.err_cpt += 1;
-                    return None;
-                }
-            };
-            self.consume(kind)?;
-            args.push(ty);
+            args.push(self.ty()?);
         }
 
         self.consume(T![CExtrnFn])?;
@@ -198,24 +188,7 @@ where
             self.consume(T![OFnParams])?;
 
             while !self.check_next(T![CFnParams]) {
-                let Some(kind) = self.peek() else {
-                    error!("expected type token in function params");
-                    self.err_cpt += 1;
-                    return None;
-                };
-
-                let ty = match kind {
-                    T![TyInt] => Type::Val(InnerType::Int),
-                    T![TyString] => Type::Val(InnerType::Str),
-                    T![TyBool] => Type::Val(InnerType::Bool),
-                    _ => {
-                        error!("unexpected token for type");
-                        self.err_cpt += 1;
-                        return None;
-                    }
-                };
-                self.consume(kind)?;
-
+                let ty = self.ty()?;
                 self.consume(T![ID])?;
 
                 let id = self.arena.strdup(self.id);
@@ -242,8 +215,19 @@ where
         };
 
         let mut body = Vec::new();
-        while !self.check_next(T![CFnDecl]) {
+        while !self.check_next(T![CFnDecl]) && !self.check_next(T![OFnReturn]) {
             body.push(self.expression(slt_builder, child_mut)?);
+        }
+
+        let mut returns = Vec::new();
+        if self.check_next(T![OFnReturn]) {
+            self.consume(T![OFnReturn])?;
+
+            while !self.check_next(T![CFnReturn]) {
+                returns.push(self.arg()?);
+            }
+
+            self.consume(T![CFnReturn])?;
         }
 
         self.consume(T![CFnDecl])?;
@@ -253,6 +237,7 @@ where
             body,
             variadic,
             args,
+            returns,
         };
 
         slt.add_function(&func, self.span);
