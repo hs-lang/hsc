@@ -468,7 +468,7 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         use Arg::*;
 
         match arg {
-            Id(id) => {
+            Id(id) | Deref(id) => {
                 // SAFETY: this is safe because of the semantic controls
                 let var = slt.find_variable(id).unwrap();
                 let diff = slt.scope - var.scope;
@@ -489,33 +489,16 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
 
                 self.write_newline()?;
 
-                gen_write!(self.writer, "    // load var {} addr x8\n", id)?;
-                gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?;
-                gen_write!(self.writer, "\n")
-            }
-            Deref(id) => {
-                // SAFETY: this is safe because of the semantic controls
-                let var = slt.find_variable(id).unwrap();
-                let diff = slt.scope - var.scope;
+                gen_write!(self.writer, "    // load var {} addr into x8\n", id)?;
 
-                gen_write!(self.writer, "    mov x9, x29\n")?;
-
-                if diff > 0 {
-                    gen_write!(
-                        self.writer,
-                        "    // climb up the stack calls to get to {} scope\n",
-                        id
-                    )?;
+                match arg {
+                    Id(_) => gen_write!(self.writer, "    sub x8, x9, {:#02x}\n", var.offset * 8)?,
+                    Deref(_) => {
+                        gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?
+                    }
+                    _ => unreachable!(),
                 }
 
-                for _ in 0..diff {
-                    gen_write!(self.writer, "    ldr x9, [x29]\n")?;
-                }
-
-                self.write_newline()?;
-
-                gen_write!(self.writer, "    // load var {} into x8\n", id)?;
-                gen_write!(self.writer, "    ldr x8, [x9, -{:#02x}]\n", var.offset * 8)?;
                 gen_write!(self.writer, "\n")
             }
             _ => todo!(),
@@ -573,10 +556,23 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
         rhs: &'prog Binop<'prog>,
         slt: &crate::parser::slt::NavigableSlt<'a, 'prog>,
     ) -> codegen::error::Result<()> {
+        let id = match lhs {
+            Arg::Deref(id) => id,
+            Arg::Ref(id) => id,
+            Arg::Id(id) => id,
+            // SAFETY: this is safe because of the grammar
+            _ => unreachable!(),
+        };
+        gen_write!(
+            self.writer,
+            "    // entering equal expression for variable {id}\n"
+        )?;
+
         self.generate_binop(rhs, slt)?;
         gen_write!(self.writer, "    mov x0, x8\n")?;
 
         self.generate_arg_addr(lhs, slt)?;
+        gen_write!(self.writer, "    // storing new value for variable {id}\n")?;
         gen_write!(self.writer, "    str x0, [x8]\n")?;
         self.write_newline()
     }
@@ -588,24 +584,30 @@ impl<'prog, W: io::Write> Codegen<'prog, W> {
     ) -> codegen::error::Result<()> {
         use Binop::*;
 
+        gen_write!(self.writer, "    // entering binop `{binop}`\n")?;
         match binop {
-            Eq { .. } => unreachable!(),
+            Eq { .. } => unreachable!("cannot have an eq inside operations"),
             Add { lhs, rhs }
             | Sub { lhs, rhs }
             | Mul { lhs, rhs }
             | Div { lhs, rhs }
             | Mod { lhs, rhs } => {
-                self.generate_binop(lhs, slt)?;
-                gen_write!(self.writer, "    str x8, [sp, -0x10]!\n")?;
                 self.generate_binop(rhs, slt)?;
+                gen_write!(self.writer, "    str x8, [sp, -0x10]!\n")?;
+                self.generate_binop(lhs, slt)?;
                 gen_write!(self.writer, "    ldr x9, [sp], 0x10\n")?;
 
+                // (a * b) + c
                 match binop {
                     Add { .. } => gen_write!(self.writer, "    add x8, x8, x9\n"),
                     Sub { .. } => gen_write!(self.writer, "    sub x8, x8, x9\n"),
-                    Mul { .. } => todo!("mul"),
-                    Div { .. } => todo!("div"),
-                    Mod { .. } => todo!("mod"),
+                    Mul { .. } => gen_write!(self.writer, "    mul x8, x8, x9\n"),
+                    Div { .. } => gen_write!(self.writer, "    sdiv x8, x8, x9\n"),
+                    Mod { .. } => {
+                        gen_write!(self.writer, "    sdiv x10, x8, x9\n")?;
+                        gen_write!(self.writer, "    mul x10, x10, x9\n")?;
+                        gen_write!(self.writer, "    subs x8, x8, x10\n")
+                    }
                     _ => unreachable!(),
                 }
             }

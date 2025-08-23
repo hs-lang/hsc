@@ -58,5 +58,16 @@ A long time ago in a galaxy far, far away...
             finn
         CloseManifest
     Order executed
+
+    Tune finn
+        Salvage finn 7 CloseSalvage
+    CloseTune
+
+    Execute order printf
+        Manifest
+            "%d\n"
+            finn
+        CloseManifest
+    Order executed
 May the force be with you.
 

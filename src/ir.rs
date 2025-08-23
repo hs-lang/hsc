@@ -121,3 +121,17 @@ impl<'prog> fmt::Display for Type<'prog> {
         }
     }
 }
+
+impl<'prog> fmt::Display for Binop<'prog> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Eq { .. } => write!(f, "eq"),
+            Self::Add { .. } => write!(f, "add"),
+            Self::Sub { .. } => write!(f, "sub"),
+            Self::Mul { .. } => write!(f, "mul"),
+            Self::Div { .. } => write!(f, "div"),
+            Self::Mod { .. } => write!(f, "mod"),
+            Self::Arg(_) => write!(f, "arg"),
+        }
+    }
+}
