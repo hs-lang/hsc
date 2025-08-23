@@ -42,8 +42,8 @@ fn validate_expr(expr: &Expr<'_>, slt: &NavigableSlt<'_, '_>) -> usize {
                 return err_cpt;
             }
 
-            for i in 0..min_args_number {
-                if !check_arg_ty(&args[i], called_func.args[i], slt) {
+            for (i, arg) in args.iter().enumerate().take(min_args_number) {
+                if !check_arg_ty(arg, called_func.args[i], slt) {
                     error!("type mismatch for function {id} argument number {i}");
                     err_cpt += 1;
                 }
